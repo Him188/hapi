@@ -26,6 +26,8 @@ export function NewSession(props: {
     api: ApiClient
     machines: Machine[]
     isLoading?: boolean
+    initialDirectory?: string
+    initialMachineId?: string
     onSuccess: (sessionId: string) => void
     onCancel: () => void
 }) {
@@ -35,8 +37,8 @@ export function NewSession(props: {
     const isFormDisabled = Boolean(isPending || props.isLoading)
     const { getRecentPaths, addRecentPath, getLastUsedMachineId, setLastUsedMachineId } = useRecentPaths()
 
-    const [machineId, setMachineId] = useState<string | null>(null)
-    const [directory, setDirectory] = useState('')
+    const [machineId, setMachineId] = useState<string | null>(props.initialMachineId ?? null)
+    const [directory, setDirectory] = useState(() => props.initialDirectory?.trim() ?? '')
     const [suppressSuggestions, setSuppressSuggestions] = useState(false)
     const [isDirectoryFocused, setIsDirectoryFocused] = useState(false)
     const [pathExistence, setPathExistence] = useState<Record<string, boolean>>({})
@@ -59,6 +61,17 @@ export function NewSession(props: {
     }, [agent])
 
     useEffect(() => {
+        if (!props.initialMachineId) return
+        setMachineId(props.initialMachineId)
+    }, [props.initialMachineId])
+
+    useEffect(() => {
+        const trimmed = props.initialDirectory?.trim()
+        if (!trimmed) return
+        setDirectory(trimmed)
+    }, [props.initialDirectory])
+
+    useEffect(() => {
         savePreferredAgent(agent)
     }, [agent])
 
@@ -70,17 +83,32 @@ export function NewSession(props: {
         if (props.machines.length === 0) return
         if (machineId && props.machines.find((m) => m.id === machineId)) return
 
+        const trimmedInitialDirectory = props.initialDirectory?.trim()
+        const foundInitialMachine = props.initialMachineId
+            ? props.machines.find((m) => m.id === props.initialMachineId)
+            : null
+        if (foundInitialMachine) {
+            setMachineId(foundInitialMachine.id)
+            if (!trimmedInitialDirectory) {
+                const paths = getRecentPaths(foundInitialMachine.id)
+                if (paths[0]) setDirectory(paths[0])
+            }
+            return
+        }
+
         const lastUsed = getLastUsedMachineId()
         const foundLast = lastUsed ? props.machines.find((m) => m.id === lastUsed) : null
 
         if (foundLast) {
             setMachineId(foundLast.id)
-            const paths = getRecentPaths(foundLast.id)
-            if (paths[0]) setDirectory(paths[0])
+            if (!trimmedInitialDirectory) {
+                const paths = getRecentPaths(foundLast.id)
+                if (paths[0]) setDirectory(paths[0])
+            }
         } else if (props.machines[0]) {
             setMachineId(props.machines[0].id)
         }
-    }, [props.machines, machineId, getLastUsedMachineId, getRecentPaths])
+    }, [props.machines, machineId, getLastUsedMachineId, getRecentPaths, props.initialDirectory, props.initialMachineId])
 
     const recentPaths = useMemo(
         () => getRecentPaths(machineId),

@@ -10,6 +10,7 @@ import {
     useMatchRoute,
     useNavigate,
     useParams,
+    useSearch,
 } from '@tanstack/react-router'
 import { App } from '@/App'
 import { SessionChat } from '@/components/SessionChat'
@@ -132,7 +133,7 @@ function SessionsPage() {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => navigate({ to: '/sessions/new' })}
+                                onClick={() => navigate({ to: '/sessions/new', search: {} })}
                                 className="session-list-new-button p-1.5 rounded-full text-[var(--app-link)] transition-colors"
                                 title={t('sessions.new')}
                             >
@@ -155,7 +156,13 @@ function SessionsPage() {
                             to: '/sessions/$sessionId',
                             params: { sessionId },
                         })}
-                        onNewSession={() => navigate({ to: '/sessions/new' })}
+                        onNewSession={(options) => navigate({
+                            to: '/sessions/new',
+                            search: {
+                                directory: options?.directory,
+                                machineId: options?.machineId,
+                            },
+                        })}
                         onRefresh={handleRefresh}
                         isLoading={isLoading}
                         renderHeader={false}
@@ -330,6 +337,7 @@ function NewSessionPage() {
     const { api } = useAppContext()
     const navigate = useNavigate()
     const goBack = useAppGoBack()
+    const search = useSearch({ from: '/sessions/new' })
     const queryClient = useQueryClient()
     const { machines, isLoading: machinesLoading, error: machinesError } = useMachines(api, true)
 
@@ -375,6 +383,8 @@ function NewSessionPage() {
                 api={api}
                 machines={machines}
                 isLoading={machinesLoading}
+                initialDirectory={search.directory}
+                initialMachineId={search.machineId}
                 onCancel={handleCancel}
                 onSuccess={handleSuccess}
             />
@@ -468,9 +478,27 @@ const sessionFileRoute = createRoute({
     component: FilePage,
 })
 
+type NewSessionSearch = {
+    directory?: string
+    machineId?: string
+}
+
 const newSessionRoute = createRoute({
     getParentRoute: () => sessionsRoute,
     path: 'new',
+    validateSearch: (search: Record<string, unknown>): NewSessionSearch => {
+        const directory = typeof search.directory === 'string' && search.directory.trim().length > 0
+            ? search.directory
+            : undefined
+        const machineId = typeof search.machineId === 'string' && search.machineId.trim().length > 0
+            ? search.machineId
+            : undefined
+
+        const result: NewSessionSearch = {}
+        if (directory) result.directory = directory
+        if (machineId) result.machineId = machineId
+        return result
+    },
     component: NewSessionPage,
 })
 
