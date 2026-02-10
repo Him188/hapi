@@ -61,7 +61,7 @@ export default {
 
   // Session actions
   'session.action.rename': 'Rename',
-  'session.action.archive': 'Archive',
+  'session.action.archive': 'Stop',
   'session.action.delete': 'Delete',
   'session.action.copy': 'Copy',
 

@@ -61,6 +61,22 @@ function groupSessionsByDirectory(sessions: SessionSummary[]): SessionGroup[] {
         })
 }
 
+function pruneCollapseOverrides(
+    overrides: Map<string, boolean>,
+    knownGroups: Set<string>
+): Map<string, boolean> {
+    if (overrides.size === 0) return overrides
+    const next = new Map(overrides)
+    let changed = false
+    for (const directory of next.keys()) {
+        if (!knownGroups.has(directory)) {
+            next.delete(directory)
+            changed = true
+        }
+    }
+    return changed ? next : overrides
+}
+
 function PlusIcon(props: { className?: string }) {
     return (
         <svg
@@ -174,7 +190,6 @@ function SessionItem(props: {
     const [menuOpen, setMenuOpen] = useState(false)
     const [menuAnchorPoint, setMenuAnchorPoint] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
     const [renameOpen, setRenameOpen] = useState(false)
-    const [archiveOpen, setArchiveOpen] = useState(false)
     const [deleteOpen, setDeleteOpen] = useState(false)
 
     const { archiveSession, renameSession, deleteSession, isPending } = useSessionActions(
@@ -271,7 +286,7 @@ function SessionItem(props: {
                 onClose={() => setMenuOpen(false)}
                 sessionActive={s.active}
                 onRename={() => setRenameOpen(true)}
-                onArchive={() => setArchiveOpen(true)}
+                onArchive={() => void archiveSession()}
                 onDelete={() => setDeleteOpen(true)}
                 anchorPoint={menuAnchorPoint}
             />
@@ -282,18 +297,6 @@ function SessionItem(props: {
                 currentName={sessionName}
                 onRename={renameSession}
                 isPending={isPending}
-            />
-
-            <ConfirmDialog
-                isOpen={archiveOpen}
-                onClose={() => setArchiveOpen(false)}
-                title={t('dialog.archive.title')}
-                description={t('dialog.archive.description', { name: sessionName })}
-                confirmLabel={t('dialog.archive.confirm')}
-                confirmingLabel={t('dialog.archive.confirming')}
-                onConfirm={archiveSession}
-                isPending={isPending}
-                destructive
             />
 
             <ConfirmDialog
@@ -330,10 +333,18 @@ export function SessionList(props: {
     const [collapseOverrides, setCollapseOverrides] = useState<Map<string, boolean>>(
         () => new Map()
     )
+    const [offlineCollapseOverrides, setOfflineCollapseOverrides] = useState<Map<string, boolean>>(
+        () => new Map()
+    )
     const isGroupCollapsed = (group: SessionGroup): boolean => {
         const override = collapseOverrides.get(group.directory)
         if (override !== undefined) return override
         return !group.hasActiveSession
+    }
+    const isOfflineCollapsed = (directory: string): boolean => {
+        const override = offlineCollapseOverrides.get(directory)
+        if (override !== undefined) return override
+        return true
     }
 
     const toggleGroup = (directory: string, isCollapsed: boolean) => {
@@ -343,21 +354,18 @@ export function SessionList(props: {
             return next
         })
     }
+    const toggleOfflineGroup = (directory: string, isCollapsed: boolean) => {
+        setOfflineCollapseOverrides(prev => {
+            const next = new Map(prev)
+            next.set(directory, !isCollapsed)
+            return next
+        })
+    }
 
     useEffect(() => {
-        setCollapseOverrides(prev => {
-            if (prev.size === 0) return prev
-            const next = new Map(prev)
-            const knownGroups = new Set(groups.map(group => group.directory))
-            let changed = false
-            for (const directory of next.keys()) {
-                if (!knownGroups.has(directory)) {
-                    next.delete(directory)
-                    changed = true
-                }
-            }
-            return changed ? next : prev
-        })
+        const knownGroups = new Set(groups.map(group => group.directory))
+        setCollapseOverrides(prev => pruneCollapseOverrides(prev, knownGroups))
+        setOfflineCollapseOverrides(prev => pruneCollapseOverrides(prev, knownGroups))
     }, [groups])
 
     return (
@@ -381,6 +389,9 @@ export function SessionList(props: {
             <div className="flex flex-col">
                 {groups.map((group) => {
                     const isCollapsed = isGroupCollapsed(group)
+                    const offlineCollapsed = isOfflineCollapsed(group.directory)
+                    const onlineSessions = group.sessions.filter(session => session.active)
+                    const offlineSessions = group.sessions.filter(session => !session.active)
                     const groupMachineId = group.sessions.find((session) => {
                         const value = session.metadata?.machineId
                         return typeof value === 'string' && value.trim().length > 0
@@ -423,7 +434,7 @@ export function SessionList(props: {
                             </div>
                             {!isCollapsed ? (
                                 <div className="flex flex-col divide-y divide-[var(--app-divider)] border-b border-[var(--app-divider)]">
-                                    {group.sessions.map((s) => (
+                                    {onlineSessions.map((s) => (
                                         <SessionItem
                                             key={s.id}
                                             session={s}
@@ -433,6 +444,32 @@ export function SessionList(props: {
                                             selected={s.id === selectedSessionId}
                                         />
                                     ))}
+                                    {offlineSessions.length > 0 ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleOfflineGroup(group.directory, offlineCollapsed)}
+                                            className="flex items-center gap-2 px-3 py-2 text-left text-xs text-[var(--app-hint)] transition-colors hover:text-[var(--app-fg)]"
+                                        >
+                                            <ChevronIcon
+                                                className="h-3.5 w-3.5 text-[var(--app-hint)]"
+                                                collapsed={offlineCollapsed}
+                                            />
+                                            <span className="uppercase tracking-wide">{t('misc.offline')}</span>
+                                            <span className="text-[var(--app-hint)]">
+                                                ({offlineSessions.length})
+                                            </span>
+                                        </button>
+                                    ) : null}
+                                    {!offlineCollapsed ? offlineSessions.map((s) => (
+                                        <SessionItem
+                                            key={s.id}
+                                            session={s}
+                                            onSelect={props.onSelect}
+                                            showPath={false}
+                                            api={api}
+                                            selected={s.id === selectedSessionId}
+                                        />
+                                    )) : null}
                                 </div>
                             ) : null}
                         </div>
